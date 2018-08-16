@@ -19,4 +19,5 @@ import java.io.Closeable;
 
 
 public interface ForwardIndexCreator extends Closeable {
+  void build(InvertedIndexCreator invertedIndexCreator);
 }

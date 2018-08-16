@@ -15,6 +15,7 @@
  */
 package com.linkedin.pinot.common.utils.primitive;
 
+import java.io.Serializable;
 import java.util.Arrays;
 import javax.annotation.Nonnull;
 import org.apache.commons.codec.binary.Hex;
@@ -27,7 +28,7 @@ import org.apache.commons.codec.binary.Hex;
  *   <li> Implements equals() and hashCode(), so it can be used as key for HashMap/Set. </li>
  * </ul>
  */
-public class ByteArray implements Comparable<ByteArray> {
+public class ByteArray implements Comparable<ByteArray>, Serializable {
   private final byte[] _bytes;
 
   public ByteArray(byte[] bytes) {

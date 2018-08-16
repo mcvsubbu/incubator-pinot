@@ -27,6 +27,7 @@ import com.linkedin.pinot.core.data.readers.RecordReader;
 import com.linkedin.pinot.core.data.readers.RecordReaderFactory;
 import com.linkedin.pinot.core.indexsegment.generator.SegmentGeneratorConfig;
 import com.linkedin.pinot.core.indexsegment.generator.SegmentVersion;
+import com.linkedin.pinot.core.realtime.converter.RealtimeSegmentRecordReader;
 import com.linkedin.pinot.core.segment.creator.ColumnIndexCreationInfo;
 import com.linkedin.pinot.core.segment.creator.ColumnStatistics;
 import com.linkedin.pinot.core.segment.creator.ForwardIndexType;
@@ -137,7 +138,7 @@ public class SegmentIndexCreationDriverImpl implements SegmentIndexCreationDrive
     indexCreationInfoMap = new HashMap<>();
 
     // Check if has star tree
-    indexCreator = new SegmentColumnarIndexCreator();
+    indexCreator = new SegmentColumnarIndexCreator(dataSource);
 
     // Ensure that the output directory exists
     final File indexDir = new File(config.getOutDir());
@@ -313,26 +314,29 @@ public class SegmentIndexCreationDriverImpl implements SegmentIndexCreationDrive
       // Initialize the index creation using the per-column statistics information
       indexCreator.init(config, segmentIndexCreationInfo, indexCreationInfoMap, dataSchema, tempIndexDir);
 
-      // Build the index
-      recordReader.rewind();
-      LOGGER.info("Start building IndexCreator!");
-      GenericRow readRow = new GenericRow();
-      GenericRow transformedRow = new GenericRow();
-      while (recordReader.hasNext()) {
-        long start = System.currentTimeMillis();
-        transformedRow = readNextRowSanitized(readRow, transformedRow);
-        long stop = System.currentTimeMillis();
-        indexCreator.indexRow(transformedRow);
-        long stop1 = System.currentTimeMillis();
-        totalRecordReadTime += (stop - start);
-        totalIndexTime += (stop1 - stop);
+      if (!(recordReader instanceof RealtimeSegmentRecordReader)) {
+        // Build the index
+        recordReader.rewind();
+        LOGGER.info("Start building IndexCreator!");
+        GenericRow readRow = new GenericRow();
+        GenericRow transformedRow = new GenericRow();
+        while (recordReader.hasNext()) {
+          long start = System.currentTimeMillis();
+          transformedRow = readNextRowSanitized(readRow, transformedRow);
+          long stop = System.currentTimeMillis();
+          indexCreator.indexRow(transformedRow);
+          long stop1 = System.currentTimeMillis();
+          totalRecordReadTime += (stop - start);
+          totalIndexTime += (stop1 - stop);
+        }
       }
-    } catch (Exception e) {
+    } catch(Exception e){
       indexCreator.close();
       throw e;
-    } finally {
+    } finally{
       recordReader.close();
     }
+
     LOGGER.info("Finished records indexing in IndexCreator!");
     int numErrors, numConversions, numNulls, numNullCols;
     if ((numErrors = extractor.getTotalErrors()) > 0) {

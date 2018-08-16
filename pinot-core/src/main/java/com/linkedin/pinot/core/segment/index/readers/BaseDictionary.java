@@ -49,7 +49,7 @@ public abstract class BaseDictionary implements Dictionary {
 
   @Override
 
-  public byte[] getBytesValue(int dictId) {
+  public byte[] getSerializedValue(int dictId) {
     throw new UnsupportedOperationException();
   }
 
@@ -97,7 +97,7 @@ public abstract class BaseDictionary implements Dictionary {
   public void readBytesValues(int[] dictIds, int inStartPos, int length, byte[][] outValues, int outStartPos) {
     int inEndPos = inStartPos + length;
     for (int i = inStartPos; i < inEndPos; i++) {
-      outValues[outStartPos++] = getBytesValue(dictIds[i]);
+      outValues[outStartPos++] = getSerializedValue(dictIds[i]);
     }
   }
 }

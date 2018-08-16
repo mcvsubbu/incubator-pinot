@@ -25,6 +25,10 @@ public class SegmentIndexCreationInfo {
   private int totalConversions;
   private int totalNullCols;
 
+  public SegmentIndexCreationInfo() {
+
+  }
+
   public int getTotalDocs() {
     return totalDocs;
   }

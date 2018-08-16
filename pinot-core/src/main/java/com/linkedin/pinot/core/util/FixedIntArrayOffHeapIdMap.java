@@ -89,6 +89,11 @@ public class FixedIntArrayOffHeapIdMap extends BaseOffHeapMutableDictionary impl
   }
 
   @Override
+  public int[] getSortedDictIds() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public int indexOf(Object rawValue) {
     return getDictId(rawValue, null);
   }

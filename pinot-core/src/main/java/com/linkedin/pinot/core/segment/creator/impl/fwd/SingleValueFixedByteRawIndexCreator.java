@@ -15,10 +15,13 @@
  */
 package com.linkedin.pinot.core.segment.creator.impl.fwd;
 
+import com.linkedin.pinot.common.data.FieldSpec;
 import com.linkedin.pinot.core.io.compression.ChunkCompressorFactory;
+import com.linkedin.pinot.core.io.reader.SingleColumnSingleValueReader;
 import com.linkedin.pinot.core.io.writer.impl.FixedByteSingleValueMultiColWriter;
 import com.linkedin.pinot.core.io.writer.impl.v1.FixedByteChunkSingleValueWriter;
 import com.linkedin.pinot.core.segment.creator.BaseSingleValueRawIndexCreator;
+import com.linkedin.pinot.core.segment.creator.InvertedIndexCreator;
 import com.linkedin.pinot.core.segment.creator.impl.V1Constants;
 import java.io.File;
 import java.io.IOException;
@@ -35,6 +38,9 @@ public class SingleValueFixedByteRawIndexCreator extends BaseSingleValueRawIndex
   private static final int NUM_DOCS_PER_CHUNK = 1000; // TODO: Auto-derive this based on metadata.
 
   final FixedByteChunkSingleValueWriter _indexWriter;
+  final SingleColumnSingleValueReader _reader;
+  final int _totalDocs;
+  final FieldSpec.DataType _dataType;
 
   /**
    * Constructor for the class
@@ -44,13 +50,18 @@ public class SingleValueFixedByteRawIndexCreator extends BaseSingleValueRawIndex
    * @param column Name of column to index
    * @param totalDocs Total number of documents to index
    * @param sizeOfEntry Size of entry (in bytes)
+   * @param dataType
+   * @param reader
    * @throws IOException
    */
   public SingleValueFixedByteRawIndexCreator(File baseIndexDir, ChunkCompressorFactory.CompressionType compressionType,
-      String column, int totalDocs, int sizeOfEntry) throws IOException {
+      String column, int totalDocs, int sizeOfEntry, FieldSpec.DataType dataType, SingleColumnSingleValueReader reader) throws IOException {
     File file = new File(baseIndexDir, column + V1Constants.Indexes.RAW_SV_FORWARD_INDEX_FILE_EXTENSION);
     _indexWriter =
         new FixedByteChunkSingleValueWriter(file, compressionType, totalDocs, NUM_DOCS_PER_CHUNK, sizeOfEntry);
+    _reader = reader;
+    _totalDocs = totalDocs;
+    _dataType = dataType;
   }
 
   @Override
@@ -93,5 +104,34 @@ public class SingleValueFixedByteRawIndexCreator extends BaseSingleValueRawIndex
   public void close()
       throws IOException {
     _indexWriter.close();
+  }
+
+  @Override
+  public void build(InvertedIndexCreator invertedIndexCreator) {
+    for (int docId = 0; docId < _totalDocs; docId++) {
+      switch (_dataType) {
+        case INT: {
+          int value = _reader.getInt(docId);
+          index(docId, value);
+        }
+          break;
+        case LONG: {
+          long value = _reader.getLong(docId);
+          index(docId, value);
+        }
+        break;
+        case FLOAT: {
+          float value = _reader.getFloat(docId);
+          index(docId, value);
+        }
+        break;
+        case DOUBLE: {
+          double value = _reader.getDouble(docId);
+          index(docId, value);
+        }
+          default:
+            throw new UnsupportedOperationException();
+      }
+    }
   }
 }

@@ -31,6 +31,7 @@ public class RealtimeSegmentSegmentCreationDataSource implements SegmentCreation
   private final MutableSegmentImpl _realtimeSegment;
   private final RealtimeSegmentRecordReader _realtimeSegmentRecordReader;
   private final Schema _schema;
+  private int[] _sortedDocIdIterator;
 
   public RealtimeSegmentSegmentCreationDataSource(MutableSegmentImpl realtimeSegment, RealtimeSegmentRecordReader realtimeSegmentRecordReader, Schema schema) {
     _realtimeSegment = realtimeSegment;
@@ -44,7 +45,18 @@ public class RealtimeSegmentSegmentCreationDataSource implements SegmentCreation
       throw new RuntimeException("Incompatible schemas used for conversion and extraction");
     }
 
-    return new RealtimeSegmentStatsContainer(_realtimeSegment, _realtimeSegmentRecordReader);
+    RealtimeSegmentStatsContainer container = new RealtimeSegmentStatsContainer(_realtimeSegment, _realtimeSegmentRecordReader);
+    _sortedDocIdIterator = container.getSortedDocIdIterator();
+
+    return container;
+  }
+
+  public int[] getSortedDocIdIterator() {
+    return _sortedDocIdIterator;
+  }
+
+  public MutableSegmentImpl getRealtimeSegment() {
+    return _realtimeSegment;
   }
 
   @Override

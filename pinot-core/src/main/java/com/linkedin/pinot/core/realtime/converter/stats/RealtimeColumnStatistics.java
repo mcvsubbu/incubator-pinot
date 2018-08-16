@@ -97,7 +97,7 @@ public class RealtimeColumnStatistics implements ColumnStatistics {
       }
     } else if (dataType.equals(FieldSpec.DataType.BYTES)) {
       for (int i = 0; i < length; i++) {
-        minStringLength = Math.min(_dictionaryReader.getBytesValue(i).length, minStringLength);
+        minStringLength = Math.min(_dictionaryReader.getSerializedValue(i).length, minStringLength);
       }
     }
 
@@ -119,7 +119,7 @@ public class RealtimeColumnStatistics implements ColumnStatistics {
       }
     } else if (dataType.equals(FieldSpec.DataType.BYTES)) {
       for (int i = 0; i < length; i++) {
-        maximumStringLength = Math.max(_dictionaryReader.getBytesValue(i).length, maximumStringLength);
+        maximumStringLength = Math.max(_dictionaryReader.getSerializedValue(i).length, maximumStringLength);
       }
     }
 

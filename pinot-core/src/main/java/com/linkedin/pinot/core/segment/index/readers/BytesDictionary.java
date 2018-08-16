@@ -44,7 +44,7 @@ public class BytesDictionary extends ImmutableDictionaryReader {
   }
 
   @Override
-  public byte[] getBytesValue(int dictId) {
+  public byte[] getSerializedValue(int dictId) {
     return getBytes(dictId, getBuffer());
   }
 

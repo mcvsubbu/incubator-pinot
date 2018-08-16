@@ -490,6 +490,8 @@ public abstract class BaseOffHeapMutableDictionary extends MutableDictionary {
     return value.equals(get(dictId));
   }
 
+  public abstract int[] getSortedDictIds();
+
   public abstract void doClose() throws IOException;
 
   protected abstract void setRawValueAt(int dictId, Object rawValue, byte[] serializedValue);

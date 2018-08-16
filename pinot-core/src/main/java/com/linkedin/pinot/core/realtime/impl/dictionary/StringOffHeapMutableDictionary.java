@@ -18,8 +18,10 @@ package com.linkedin.pinot.core.realtime.impl.dictionary;
 import com.linkedin.pinot.common.utils.StringUtil;
 import com.linkedin.pinot.core.io.readerwriter.PinotDataBufferMemoryManager;
 import com.linkedin.pinot.core.io.writer.impl.MutableOffHeapByteArrayStore;
+import com.linkedin.pinot.pql.parsers.utils.Pair;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Comparator;
 import javax.annotation.Nonnull;
 
 
@@ -126,6 +128,32 @@ public class StringOffHeapMutableDictionary extends BaseOffHeapMutableDictionary
         _max = value;
       }
     }
+  }
+
+  public byte[] getSerializedValue(int dictId) {
+    return _byteStore.get(dictId);
+  }
+
+  public int[] getSortedDictIds() {
+    int numValues = length();
+    Pair<String, Integer>[] sortedValues = new Pair[numValues];
+
+    for (int i = 0; i < numValues; i++) {
+      String value = getInternal(i);
+      sortedValues[i] = new Pair<>(value, i);
+    }
+
+    Arrays.sort(sortedValues, new Comparator<Pair<String, Integer>>() {
+      @Override
+      public int compare(Pair<String, Integer> o1, Pair<String, Integer> o2) {
+        return o1.getFirst().compareTo(o2.getFirst());
+      }
+    });
+    int[] sortedDictIds = new int[numValues];
+    for (int i = 0; i < numValues; i++) {
+      sortedDictIds[i] = sortedValues[i].getSecond();
+    }
+    return sortedDictIds;
   }
 
   @Override

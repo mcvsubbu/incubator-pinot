@@ -166,6 +166,22 @@ public class LongOffHeapMutableDictionary extends BaseOffHeapMutableDictionary {
       _max = value;
     }
   }
+  public int[] getSortedDictIds() {
+    int numValues = length();
+    long[] sortedValues = new long[numValues];
+
+    for (int i = 0; i < numValues; i++) {
+      sortedValues[i] = (Long) get(i);
+    }
+
+    Arrays.sort(sortedValues);
+
+    int[] sortedDictIds = new int[numValues];
+    for (int i = 0; i < numValues; i++) {
+      sortedDictIds[i] = getDictId((Long)sortedValues[i], null);
+    }
+    return sortedDictIds;
+  }
 
   @Override
   public long getTotalOffHeapMemUsed() {

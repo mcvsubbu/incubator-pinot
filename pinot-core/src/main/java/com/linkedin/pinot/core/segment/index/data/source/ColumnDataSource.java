@@ -137,6 +137,10 @@ public final class ColumnDataSource extends DataSource {
     };
   }
 
+  public DataFileReader getForwardIndex() {
+    return _forwardIndex;
+  }
+
   @Override
   public DataSourceMetadata getDataSourceMetadata() {
     return _metadata;

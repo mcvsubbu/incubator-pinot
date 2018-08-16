@@ -18,8 +18,10 @@ package com.linkedin.pinot.core.realtime.impl.dictionary;
 import com.linkedin.pinot.common.utils.primitive.ByteArray;
 import com.linkedin.pinot.core.io.readerwriter.PinotDataBufferMemoryManager;
 import com.linkedin.pinot.core.io.writer.impl.MutableOffHeapByteArrayStore;
+import com.linkedin.pinot.pql.parsers.utils.Pair;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Comparator;
 import javax.annotation.Nonnull;
 
 
@@ -152,9 +154,36 @@ public class BytesOffHeapMutableDictionary extends BaseOffHeapMutableDictionary 
     }
   }
 
+  public byte[] getEncodedByteArray(int dictId) {
+    return _byteStore.get(dictId);
+  }
+
   @Override
   public long getTotalOffHeapMemUsed() {
     return super.getTotalOffHeapMemUsed() + _byteStore.getTotalOffHeapMemUsed();
+  }
+
+  public int[] getSortedDictIds() {
+    int numValues = length();
+    Pair<ByteArray, Integer>[] sortedValues = new Pair[numValues];
+
+    for (int i = 0; i < numValues; i++) {
+      ByteArray value = getInternal(i);
+      sortedValues[i] = new Pair<>(value, i);
+    }
+
+    Arrays.sort(sortedValues, new Comparator<Pair<ByteArray, Integer>>() {
+      @Override
+      public int compare(Pair<ByteArray, Integer> o1, Pair<ByteArray, Integer> o2) {
+        return o1.getFirst().compareTo(o2.getFirst());
+      }
+    });
+    int[] sortedDictIds = new int[numValues];
+    for (int i = 0; i < numValues; i++) {
+      sortedDictIds[i] = sortedValues[i].getSecond();
+    }
+    return sortedDictIds;
+
   }
 
   @Override

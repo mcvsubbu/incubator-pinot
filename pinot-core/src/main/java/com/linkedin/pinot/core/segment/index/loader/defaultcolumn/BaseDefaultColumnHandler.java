@@ -323,7 +323,7 @@ public abstract class BaseDefaultColumnHandler implements DefaultColumnHandler {
 
     // Create dictionary.
     // We will have only one value in the dictionary.
-    try (SegmentDictionaryCreator creator = new SegmentDictionaryCreator(sortedArray, fieldSpec, _indexDir)) {
+    try (SegmentDictionaryCreator creator = new SegmentDictionaryCreator(sortedArray, fieldSpec, _indexDir, null, null)) {
       creator.build();
     }
 
@@ -332,7 +332,7 @@ public abstract class BaseDefaultColumnHandler implements DefaultColumnHandler {
       // Single-value column.
 
       SingleValueSortedForwardIndexCreator svFwdIndexCreator =
-          new SingleValueSortedForwardIndexCreator(_indexDir, 1/*cardinality*/, fieldSpec);
+          new SingleValueSortedForwardIndexCreator(_indexDir, 1/*cardinality*/, fieldSpec, null, null, 1, null );
       for (int docId = 0; docId < totalDocs; docId++) {
         svFwdIndexCreator.add(0/*dictionaryId*/, docId);
       }
@@ -342,7 +342,7 @@ public abstract class BaseDefaultColumnHandler implements DefaultColumnHandler {
 
       MultiValueUnsortedForwardIndexCreator mvFwdIndexCreator =
           new MultiValueUnsortedForwardIndexCreator(fieldSpec, _indexDir, 1/*cardinality*/, totalDocs/*numDocs*/,
-              totalDocs/*totalNumberOfValues*/, false/*hasNulls*/);
+              totalDocs/*totalNumberOfValues*/, false,/*hasNulls*/null, null, null);
       int[] dictionaryIds = {0};
       for (int docId = 0; docId < totalDocs; docId++) {
         mvFwdIndexCreator.index(docId, dictionaryIds);
@@ -353,6 +353,6 @@ public abstract class BaseDefaultColumnHandler implements DefaultColumnHandler {
     // Add the column metadata information to the metadata properties.
     SegmentColumnarIndexCreator.addColumnMetadataInfo(_segmentProperties, column, columnIndexCreationInfo, totalDocs,
         totalRawDocs, totalAggDocs, fieldSpec, true/*hasDictionary*/, dictionaryElementSize, true/*hasInvertedIndex*/,
-        null/*hllOriginColumn*/);
+        null,/*hllOriginColumn*/1);
   }
 }

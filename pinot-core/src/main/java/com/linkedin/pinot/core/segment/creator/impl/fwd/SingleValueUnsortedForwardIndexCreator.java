@@ -16,9 +16,12 @@
 package com.linkedin.pinot.core.segment.creator.impl.fwd;
 
 import com.linkedin.pinot.common.data.FieldSpec;
+import com.linkedin.pinot.core.io.readerwriter.impl.FixedByteSingleColumnSingleValueReaderWriter;
 import com.linkedin.pinot.core.io.writer.SingleColumnSingleValueWriter;
 import com.linkedin.pinot.core.io.writer.impl.v1.FixedBitSingleValueWriter;
+import com.linkedin.pinot.core.segment.creator.InvertedIndexCreator;
 import com.linkedin.pinot.core.segment.creator.SingleValueForwardIndexCreator;
+import com.linkedin.pinot.core.segment.creator.impl.SegmentDictionaryCreator;
 import com.linkedin.pinot.core.segment.creator.impl.V1Constants;
 import java.io.File;
 import java.io.IOException;
@@ -30,15 +33,24 @@ public class SingleValueUnsortedForwardIndexCreator implements SingleValueForwar
   private final FieldSpec spec;
   private int maxNumberOfBits = 0;
   private SingleColumnSingleValueWriter sVWriter;
+  int[] _newToOldDocIds;
+  FixedByteSingleColumnSingleValueReaderWriter _fwdIndex;
+  SegmentDictionaryCreator _dictionaryCreator;
+  int _totalDocs;
 
   public SingleValueUnsortedForwardIndexCreator(FieldSpec spec, File baseIndexDir, int cardinality, int numDocs,
-      int totalNumberOfValues, boolean hasNulls) throws Exception {
+      int totalNumberOfValues, boolean hasNulls, SegmentDictionaryCreator dictionaryCreator,
+      FixedByteSingleColumnSingleValueReaderWriter fwdIndex, int[] newToOldDocIds) throws Exception {
     forwardIndexFile =
         new File(baseIndexDir, spec.getName() + V1Constants.Indexes.UNSORTED_SV_FORWARD_INDEX_FILE_EXTENSION);
     this.spec = spec;
     FileUtils.touch(forwardIndexFile);
     maxNumberOfBits = getNumOfBits(cardinality);
     sVWriter = new FixedBitSingleValueWriter(forwardIndexFile, numDocs, maxNumberOfBits);
+    _newToOldDocIds = newToOldDocIds;
+    _fwdIndex = fwdIndex;
+    _dictionaryCreator = dictionaryCreator;
+    _totalDocs = numDocs;
   }
 
   public static int getNumOfBits(int dictionarySize) {
@@ -60,5 +72,18 @@ public class SingleValueUnsortedForwardIndexCreator implements SingleValueForwar
   @Override
   public void close() throws IOException {
     sVWriter.close();
+  }
+
+  @Override
+  public void build(InvertedIndexCreator invertedIndexCreator) {
+    int[] sortedDictIds = _dictionaryCreator.getSortedDictIds();
+    for (int i = 0; i < _totalDocs; i++) {
+      int oldDictId = _fwdIndex.getInt(_newToOldDocIds[i]);
+      int newDictId = sortedDictIds[oldDictId];
+      index(newDictId, i);
+      if (invertedIndexCreator != null) {
+        invertedIndexCreator.add(newDictId);
+      }
+    }
   }
 }

@@ -16,8 +16,11 @@
 package com.linkedin.pinot.core.segment.creator.impl.fwd;
 
 import com.linkedin.pinot.common.data.FieldSpec;
+import com.linkedin.pinot.core.io.readerwriter.impl.FixedByteSingleColumnSingleValueReaderWriter;
 import com.linkedin.pinot.core.io.writer.impl.FixedByteSingleValueMultiColWriter;
+import com.linkedin.pinot.core.segment.creator.InvertedIndexCreator;
 import com.linkedin.pinot.core.segment.creator.SingleValueForwardIndexCreator;
+import com.linkedin.pinot.core.segment.creator.impl.SegmentDictionaryCreator;
 import com.linkedin.pinot.core.segment.creator.impl.V1Constants;
 import java.io.File;
 import java.io.IOException;
@@ -28,9 +31,18 @@ public class SingleValueSortedForwardIndexCreator implements SingleValueForwardI
   private int[] mins;
   private int[] maxs;
   private int cardinality;
+  private SegmentDictionaryCreator _dictionaryCreator;
+  private FixedByteSingleColumnSingleValueReaderWriter _fwdIndex;
+  int _totalDocs;
+  int[] _newToOldDocIds;
 
-  public SingleValueSortedForwardIndexCreator(File indexDir, int cardinality, FieldSpec spec) throws Exception {
+  public SingleValueSortedForwardIndexCreator(File indexDir, int cardinality, FieldSpec spec,
+      SegmentDictionaryCreator dictionaryCreator, FixedByteSingleColumnSingleValueReaderWriter fwdIndex, int totalDocs, int[] newToOldDocIds) throws Exception {
     File indexFile = new File(indexDir, spec.getName() + V1Constants.Indexes.SORTED_SV_FORWARD_INDEX_FILE_EXTENSION);
+    _newToOldDocIds = newToOldDocIds;
+    _dictionaryCreator = dictionaryCreator;
+    _fwdIndex = fwdIndex;
+    _totalDocs = totalDocs;
     indexWriter = new FixedByteSingleValueMultiColWriter(indexFile, cardinality, 2, new int[]{4, 4});
     mins = new int[cardinality];
     maxs = new int[cardinality];
@@ -71,5 +83,18 @@ public class SingleValueSortedForwardIndexCreator implements SingleValueForwardI
   @Override
   public void close() throws IOException {
     seal();
+  }
+
+  @Override
+  public void build(InvertedIndexCreator invertedIndexCreator) {
+    int[] sortedDictIds = _dictionaryCreator.getSortedDictIds();
+    for (int i = 0; i < _totalDocs; i++) {
+      int oldDictId = _fwdIndex.getInt(_newToOldDocIds[i]);
+      int newDictId = sortedDictIds[oldDictId];
+      add(newDictId, i);
+      if (invertedIndexCreator != null) {
+        invertedIndexCreator.add(newDictId);
+      }
+    }
   }
 }

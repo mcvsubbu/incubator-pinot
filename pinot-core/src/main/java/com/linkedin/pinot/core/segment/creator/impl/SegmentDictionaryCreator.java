@@ -19,7 +19,16 @@ import com.google.common.base.Preconditions;
 import com.linkedin.pinot.common.data.FieldSpec;
 import com.linkedin.pinot.common.utils.StringUtil;
 import com.linkedin.pinot.common.utils.primitive.ByteArray;
+import com.linkedin.pinot.core.indexsegment.mutable.MutableSegmentImpl;
 import com.linkedin.pinot.core.io.util.FixedByteValueReaderWriter;
+import com.linkedin.pinot.core.realtime.impl.dictionary.BytesOffHeapMutableDictionary;
+import com.linkedin.pinot.core.realtime.impl.dictionary.DoubleOffHeapMutableDictionary;
+import com.linkedin.pinot.core.realtime.impl.dictionary.FloatOffHeapMutableDictionary;
+import com.linkedin.pinot.core.realtime.impl.dictionary.IntOffHeapMutableDictionary;
+import com.linkedin.pinot.core.realtime.impl.dictionary.LongOffHeapMutableDictionary;
+import com.linkedin.pinot.core.realtime.impl.dictionary.MutableDictionary;
+import com.linkedin.pinot.core.realtime.impl.dictionary.StringOffHeapMutableDictionary;
+import com.linkedin.pinot.core.segment.index.data.source.ColumnDataSource;
 import com.linkedin.pinot.core.segment.memory.PinotDataBuffer;
 import it.unimi.dsi.fastutil.doubles.Double2IntOpenHashMap;
 import it.unimi.dsi.fastutil.floats.Float2IntOpenHashMap;
@@ -50,15 +59,160 @@ public class SegmentDictionaryCreator implements Closeable {
   private Object2IntOpenHashMap<String> _stringValueToIndexMap;
   private Object2IntOpenHashMap<ByteArray> _bytesValueToIndexMap;
   private int _numBytesPerEntry = 0;
+  private final MutableSegmentImpl _mutableSegment;
+  private int[] sortedDictIds;
+  int _cardinality;
 
-  public SegmentDictionaryCreator(Object sortedValues, FieldSpec fieldSpec, File indexDir) throws IOException {
+  public SegmentDictionaryCreator(Object sortedValues, FieldSpec fieldSpec, File indexDir,
+      MutableSegmentImpl mutableSegment, int[] newToOldDocId) throws IOException {
     _sortedValues = sortedValues;
     _fieldSpec = fieldSpec;
     _dictionaryFile = new File(indexDir, fieldSpec.getName() + V1Constants.Dict.FILE_EXTENSION);
+    _mutableSegment = mutableSegment;
     FileUtils.touch(_dictionaryFile);
   }
 
+  public SegmentDictionaryCreator(FieldSpec fieldSpec, File indexDir, MutableSegmentImpl mutableSegment) throws IOException {
+    _sortedValues = null;
+    _fieldSpec = fieldSpec;
+    _dictionaryFile = new File(indexDir, fieldSpec.getName() + V1Constants.Dict.FILE_EXTENSION);
+    _mutableSegment = mutableSegment;
+    FileUtils.touch(_dictionaryFile);
+    ColumnDataSource dataSource = _mutableSegment.getDataSource(_fieldSpec.getName());
+    MutableDictionary mutableDictionary = (MutableDictionary)dataSource.getDictionary();
+    _cardinality = mutableDictionary.length();
+  }
+
   public void build() throws IOException {
+    if (_mutableSegment == null) {
+      buildOffline();
+    } else {
+      buildRealtime();
+    }
+  }
+
+  public int getCardinality() {
+    return _cardinality;
+  }
+
+  public void buildRealtime() throws IOException {
+    final String column = _fieldSpec.getName();
+    ColumnDataSource dataSource = _mutableSegment.getDataSource(column);
+    MutableDictionary mutableDictionary = (MutableDictionary)dataSource.getDictionary();
+
+    switch (_fieldSpec.getDataType()) {
+      case INT: {
+        IntOffHeapMutableDictionary dictionary = (IntOffHeapMutableDictionary) mutableDictionary;
+        int numValues = dictionary.length();
+        sortedDictIds = dictionary.getSortedDictIds();
+
+        try (PinotDataBuffer dataBuffer = PinotDataBuffer.mapFile(_dictionaryFile, false, 0,
+            (long) numValues * Integer.BYTES, ByteOrder.BIG_ENDIAN, getClass().getSimpleName());
+            FixedByteValueReaderWriter writer = new FixedByteValueReaderWriter(dataBuffer)) {
+          for (int i = 0; i < numValues; i++) {
+            int value = mutableDictionary.getIntValue(sortedDictIds[i]);
+            writer.writeInt(i, value);
+          }
+        }
+        LOGGER.info("Created dictionary for INT column: {} with cardinality: {}, ", _fieldSpec.getName(), numValues);
+        return;
+      }
+      case LONG: {
+        LongOffHeapMutableDictionary dictionary = (LongOffHeapMutableDictionary) mutableDictionary;
+        int numValues = dictionary.length();
+        sortedDictIds = dictionary.getSortedDictIds();
+
+        try (PinotDataBuffer dataBuffer = PinotDataBuffer.mapFile(_dictionaryFile, false, 0,
+            (long) numValues * Long.BYTES, ByteOrder.BIG_ENDIAN, getClass().getSimpleName());
+            FixedByteValueReaderWriter writer = new FixedByteValueReaderWriter(dataBuffer)) {
+          for (int i = 0; i < numValues; i++) {
+            long value = mutableDictionary.getLongValue(sortedDictIds[i]);
+            writer.writeLong(i, value);
+          }
+        }
+        LOGGER.info("Created dictionary for LONG column: {} with cardinality: {}, ", _fieldSpec.getName(), numValues);
+        return;
+      }
+      case FLOAT: {
+        FloatOffHeapMutableDictionary dictionary = (FloatOffHeapMutableDictionary) mutableDictionary;
+        int numValues = dictionary.length();
+        sortedDictIds = dictionary.getSortedDictIds();
+
+        try (PinotDataBuffer dataBuffer = PinotDataBuffer.mapFile(_dictionaryFile, false, 0,
+            (long) numValues * Float.BYTES, ByteOrder.BIG_ENDIAN, getClass().getSimpleName());
+            FixedByteValueReaderWriter writer = new FixedByteValueReaderWriter(dataBuffer)) {
+          for (int i = 0; i < numValues; i++) {
+            float value = mutableDictionary.getFloatValue(sortedDictIds[i]);
+            writer.writeFloat(i, value);
+          }
+        }
+        LOGGER.info("Created dictionary for FLOAT column: {} with cardinality: {}, ", _fieldSpec.getName(), numValues);
+        return;
+      }
+      case DOUBLE: {
+        DoubleOffHeapMutableDictionary dictionary = (DoubleOffHeapMutableDictionary) mutableDictionary;
+        int numValues = dictionary.length();
+        sortedDictIds = dictionary.getSortedDictIds();
+
+        try (PinotDataBuffer dataBuffer = PinotDataBuffer.mapFile(_dictionaryFile, false, 0,
+            (long) numValues * Double.BYTES, ByteOrder.BIG_ENDIAN, getClass().getSimpleName());
+            FixedByteValueReaderWriter writer = new FixedByteValueReaderWriter(dataBuffer)) {
+          for (int i = 0; i < numValues; i++) {
+            double value = mutableDictionary.getDoubleValue(sortedDictIds[i]);
+            writer.writeDouble(i, value);
+          }
+        }
+        LOGGER.info("Created dictionary for DOUBLE column: {} with cardinality: {}, ", _fieldSpec.getName(), numValues);
+        return;
+    }
+      case STRING: {
+        StringOffHeapMutableDictionary dictionary = (StringOffHeapMutableDictionary) mutableDictionary;
+        int numValues = dictionary.length();
+        sortedDictIds = dictionary.getSortedDictIds();
+
+        for (int i = 0; i < numValues; i++) {
+          byte[] valueBytes = dictionary.getSerializedValue(i);
+          _numBytesPerEntry = Math.max(_numBytesPerEntry, valueBytes.length);
+        }
+
+        try (PinotDataBuffer dataBuffer = PinotDataBuffer.mapFile(_dictionaryFile, false, 0,
+            (long) numValues * _numBytesPerEntry, ByteOrder.BIG_ENDIAN, getClass().getSimpleName());
+            FixedByteValueReaderWriter writer = new FixedByteValueReaderWriter(dataBuffer)) {
+          for (int i = 0; i < numValues; i++) {
+            byte[] value = dictionary.getSerializedValue(sortedDictIds[i]);
+            writer.writeUnpaddedString(i, _numBytesPerEntry, value);
+          }
+        }
+        LOGGER.info("Created dictionary for STRING column: {} with cardinality: {}, ", _fieldSpec.getName(), numValues);
+        return;
+
+      }
+      case BYTES: {
+        BytesOffHeapMutableDictionary dictionary = (BytesOffHeapMutableDictionary) mutableDictionary;
+        int numValues = dictionary.length();
+        sortedDictIds = dictionary.getSortedDictIds();
+
+        for (int i = 0; i < numValues; i++) {
+          byte[] valueBytes = dictionary.getSerializedValue(i);
+          _numBytesPerEntry = Math.max(_numBytesPerEntry, valueBytes.length);
+        }
+
+        try (PinotDataBuffer dataBuffer = PinotDataBuffer.mapFile(_dictionaryFile, false, 0,
+            (long) numValues * _numBytesPerEntry, ByteOrder.BIG_ENDIAN, getClass().getSimpleName());
+            FixedByteValueReaderWriter writer = new FixedByteValueReaderWriter(dataBuffer)) {
+          for (int i = 0; i < numValues; i++) {
+            byte[] value = dictionary.getSerializedValue(sortedDictIds[i]);
+            writer.writeUnpaddedString(i, _numBytesPerEntry, value);
+          }
+        }
+      }
+    }
+  }
+
+  public int[] getSortedDictIds() {
+    return sortedDictIds;
+  }
+  public void buildOffline() throws IOException {
     switch (_fieldSpec.getDataType()) {
       case INT:
         int[] sortedInts = (int[]) _sortedValues;

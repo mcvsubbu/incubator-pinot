@@ -25,11 +25,17 @@ import com.linkedin.pinot.common.data.StarTreeIndexSpec;
 import com.linkedin.pinot.core.data.GenericRow;
 import com.linkedin.pinot.core.data.partition.PartitionFunction;
 import com.linkedin.pinot.core.indexsegment.generator.SegmentGeneratorConfig;
+import com.linkedin.pinot.core.indexsegment.mutable.MutableSegmentImpl;
 import com.linkedin.pinot.core.io.compression.ChunkCompressorFactory;
+import com.linkedin.pinot.core.io.reader.SingleColumnSingleValueReader;
+import com.linkedin.pinot.core.io.readerwriter.impl.FixedByteSingleColumnSingleValueReaderWriter;
+import com.linkedin.pinot.core.realtime.converter.stats.RealtimeSegmentSegmentCreationDataSource;
+import com.linkedin.pinot.core.realtime.impl.dictionary.BaseOffHeapMutableDictionary;
 import com.linkedin.pinot.core.segment.creator.ColumnIndexCreationInfo;
 import com.linkedin.pinot.core.segment.creator.ForwardIndexCreator;
 import com.linkedin.pinot.core.segment.creator.InvertedIndexCreator;
 import com.linkedin.pinot.core.segment.creator.MultiValueForwardIndexCreator;
+import com.linkedin.pinot.core.segment.creator.SegmentCreationDataSource;
 import com.linkedin.pinot.core.segment.creator.SegmentCreator;
 import com.linkedin.pinot.core.segment.creator.SegmentIndexCreationInfo;
 import com.linkedin.pinot.core.segment.creator.SingleValueForwardIndexCreator;
@@ -41,6 +47,7 @@ import com.linkedin.pinot.core.segment.creator.impl.fwd.SingleValueUnsortedForwa
 import com.linkedin.pinot.core.segment.creator.impl.fwd.SingleValueVarByteRawIndexCreator;
 import com.linkedin.pinot.core.segment.creator.impl.inv.OffHeapBitmapInvertedIndexCreator;
 import com.linkedin.pinot.core.segment.creator.impl.inv.OnHeapBitmapInvertedIndexCreator;
+import com.linkedin.pinot.core.segment.index.data.source.ColumnDataSource;
 import com.linkedin.pinot.startree.hll.HllConfig;
 import java.io.File;
 import java.io.IOException;
@@ -73,6 +80,8 @@ public class SegmentColumnarIndexCreator implements SegmentCreator {
   private SegmentGeneratorConfig config;
   private Map<String, ColumnIndexCreationInfo> indexCreationInfoMap;
   private Map<String, SegmentDictionaryCreator> _dictionaryCreatorMap = new HashMap<>();
+  private Map<String, Integer> _numDictionaryBytesPerEntry = new HashMap<>();
+  private Map<String, Integer> _dictionarySize = new HashMap<>();
   private Map<String, ForwardIndexCreator> _forwardIndexCreatorMap = new HashMap<>();
   private Map<String, InvertedIndexCreator> _invertedIndexCreatorMap = new HashMap<>();
   private String segmentName;
@@ -86,6 +95,28 @@ public class SegmentColumnarIndexCreator implements SegmentCreator {
   private int totalConversions;
   private int totalNullCols;
   private int docIdCounter;
+  private final MutableSegmentImpl _mutableSegment;
+  private final int[] _newToOldDocId;
+  private final int[] _oldToNewDocId;
+
+  public SegmentColumnarIndexCreator(SegmentCreationDataSource dataSource) {
+    if (dataSource instanceof RealtimeSegmentSegmentCreationDataSource) {
+      _mutableSegment = ((RealtimeSegmentSegmentCreationDataSource)dataSource).getRealtimeSegment();
+      _newToOldDocId = ((RealtimeSegmentSegmentCreationDataSource)dataSource).getSortedDocIdIterator();
+      if (_newToOldDocId != null) {
+        _oldToNewDocId = new int[_newToOldDocId.length];
+        for (int i = 0; i < _newToOldDocId.length; i++) {
+          _oldToNewDocId[_newToOldDocId[i]] = i;
+        }
+      } else {
+        _oldToNewDocId = null;
+      }
+    } else {
+      _mutableSegment = null;
+      _newToOldDocId = null;
+      _oldToNewDocId = null;
+    }
+  }
 
   @Override
   public void init(SegmentGeneratorConfig segmentCreationSpec, SegmentIndexCreationInfo segmentIndexCreationInfo,
@@ -130,47 +161,60 @@ public class SegmentColumnarIndexCreator implements SegmentCreator {
         boolean hasNulls = indexCreationInfo.hasNulls();
 
         // Initialize dictionary creator
-        SegmentDictionaryCreator dictionaryCreator =
-            new SegmentDictionaryCreator(indexCreationInfo.getSortedUniqueElementsArray(), fieldSpec, _indexDir);
-        _dictionaryCreatorMap.put(columnName, dictionaryCreator);
+        SegmentDictionaryCreator dictionaryCreator = new SegmentDictionaryCreator(fieldSpec, _indexDir, _mutableSegment);
 
+//        _dictionaryCreatorMap.put(columnName, dictionaryCreator);
+        // Initialize inverted index creator
+        final int cardinality = dictionaryCreator.getCardinality();
+        _dictionarySize.put(columnName, cardinality);
+
+        InvertedIndexCreator invertedIndexCreator = null;
+        // Initialize inverted index creator
+        if (invertedIndexColumns.contains(columnName)) {
+          if (segmentCreationSpec.isOnHeap()) {
+            invertedIndexCreator =
+                new OnHeapBitmapInvertedIndexCreator(_indexDir, columnName, cardinality);
+          } else {
+            invertedIndexCreator =
+                new OffHeapBitmapInvertedIndexCreator(_indexDir, fieldSpec, cardinality, totalDocs,
+                    indexCreationInfo.getTotalNumberOfEntries());
+          }
+        }
         // Create dictionary
         try {
-          dictionaryCreator.build();
+            dictionaryCreator.build();
+            _numDictionaryBytesPerEntry.put(columnName, dictionaryCreator.getNumBytesPerEntry());
         } catch (Exception e) {
           LOGGER.error("Error building dictionary for field: {}, cardinality: {}, number of bytes per entry: {}",
               fieldSpec.getName(), indexCreationInfo.getDistinctValueCount(), dictionaryCreator.getNumBytesPerEntry());
           throw e;
         }
 
+        ForwardIndexCreator forwardIndexCreator;
         // Initialize forward index creator
-        int cardinality = indexCreationInfo.getDistinctValueCount();
         if (fieldSpec.isSingleValueField()) {
           if (indexCreationInfo.isSorted()) {
-            _forwardIndexCreatorMap.put(columnName,
-                new SingleValueSortedForwardIndexCreator(_indexDir, cardinality, fieldSpec));
+            forwardIndexCreator =
+                new SingleValueSortedForwardIndexCreator(_indexDir, cardinality, fieldSpec, dictionaryCreator, _mutableSegment.getSVFwdIndex(columnName), totalDocs, _newToOldDocId);
           } else {
-            _forwardIndexCreatorMap.put(columnName,
+            forwardIndexCreator =
                 new SingleValueUnsortedForwardIndexCreator(fieldSpec, _indexDir, cardinality, totalDocs, totalDocs,
-                    hasNulls));
+                    hasNulls, dictionaryCreator, _mutableSegment.getSVFwdIndex(columnName), _newToOldDocId);
           }
         } else {
-          _forwardIndexCreatorMap.put(columnName,
+          forwardIndexCreator =
               new MultiValueUnsortedForwardIndexCreator(fieldSpec, _indexDir, cardinality, totalDocs,
-                  indexCreationInfo.getTotalNumberOfEntries(), hasNulls));
+                  indexCreationInfo.getTotalNumberOfEntries(), hasNulls, dictionaryCreator, _mutableSegment.getMVFwdIndex(columnName),
+                  _newToOldDocId);
+        }
+        forwardIndexCreator.build(invertedIndexCreator);
+        forwardIndexCreator.close();
+        dictionaryCreator.close();
+        if (invertedIndexCreator != null) {
+          invertedIndexCreator.seal();
+          invertedIndexCreator.close();
         }
 
-        // Initialize inverted index creator
-        if (invertedIndexColumns.contains(columnName)) {
-          if (segmentCreationSpec.isOnHeap()) {
-            _invertedIndexCreatorMap.put(columnName,
-                new OnHeapBitmapInvertedIndexCreator(_indexDir, columnName, cardinality));
-          } else {
-            _invertedIndexCreatorMap.put(columnName,
-                new OffHeapBitmapInvertedIndexCreator(_indexDir, fieldSpec, cardinality, totalDocs,
-                    indexCreationInfo.getTotalNumberOfEntries()));
-          }
-        }
       } else {
         // Create raw index
 
@@ -184,9 +228,24 @@ public class SegmentColumnarIndexCreator implements SegmentCreator {
             getColumnCompressionType(segmentCreationSpec, fieldSpec);
 
         // Initialize forward index creator
-        _forwardIndexCreatorMap.put(columnName,
+        ForwardIndexCreator forwardIndexCreator =
             getRawIndexCreatorForColumn(_indexDir, compressionType, columnName, fieldSpec.getDataType(), totalDocs,
-                indexCreationInfo.getLengthOfLongestEntry()));
+                indexCreationInfo.getLengthOfLongestEntry(), _mutableSegment);
+          // Should be non-null for realtime data creation
+        ColumnDataSource dataSource = _mutableSegment.getDataSource(columnName);
+        if (dataSource.getDataSourceMetadata().hasDictionary()) {
+          BaseOffHeapMutableDictionary mutableDictionary = (BaseOffHeapMutableDictionary) dataSource.getDictionary();
+          FixedByteSingleColumnSingleValueReaderWriter fwdIndex = _mutableSegment.getSVFwdIndex(columnName);
+          for (int newDocId = 0; newDocId < totalDocs; newDocId++) {
+            int oldDocId = _newToOldDocId[newDocId];
+            int oldDictId = fwdIndex.getInt(oldDocId);
+            Object value = mutableDictionary.get(oldDictId);
+            ((SingleValueRawIndexCreator) forwardIndexCreator).index(newDocId, value);
+          }
+        } else {
+          forwardIndexCreator.build(null);
+        }
+        forwardIndexCreator.close();
       }
     }
   }
@@ -369,8 +428,8 @@ public class SegmentColumnarIndexCreator implements SegmentCreator {
     for (Map.Entry<String, ColumnIndexCreationInfo> entry : indexCreationInfoMap.entrySet()) {
       String column = entry.getKey();
       ColumnIndexCreationInfo columnIndexCreationInfo = entry.getValue();
-      SegmentDictionaryCreator dictionaryCreator = _dictionaryCreatorMap.get(column);
-      int dictionaryElementSize = (dictionaryCreator != null) ? dictionaryCreator.getNumBytesPerEntry() : 0;
+      Integer dictionaryElementSize = _numDictionaryBytesPerEntry.get(column) == null ? 0 : _numDictionaryBytesPerEntry.get(column);
+      Integer distinctValueCount = _dictionarySize.get(column) == null ? Integer.MIN_VALUE : _dictionarySize.get(column);
 
       // TODO: after fixing the server-side dependency on HAS_INVERTED_INDEX and deployed, set HAS_INVERTED_INDEX properly
       // The hasInvertedIndex flag in segment metadata is picked up in ColumnMetadata, and will be used during the query
@@ -387,8 +446,8 @@ public class SegmentColumnarIndexCreator implements SegmentCreator {
       }
 
       addColumnMetadataInfo(properties, column, columnIndexCreationInfo, totalDocs, totalRawDocs, totalAggDocs,
-          schema.getFieldSpecFor(column), _dictionaryCreatorMap.containsKey(column), dictionaryElementSize,
-          hasInvertedIndex, hllOriginColumn);
+          schema.getFieldSpecFor(column), _numDictionaryBytesPerEntry.containsKey(column), dictionaryElementSize,
+          hasInvertedIndex, hllOriginColumn, distinctValueCount);
     }
 
     properties.save();
@@ -396,16 +455,14 @@ public class SegmentColumnarIndexCreator implements SegmentCreator {
 
   public static void addColumnMetadataInfo(PropertiesConfiguration properties, String column,
       ColumnIndexCreationInfo columnIndexCreationInfo, int totalDocs, int totalRawDocs, int totalAggDocs,
-      FieldSpec fieldSpec, boolean hasDictionary, int dictionaryElementSize, boolean hasInvertedIndex,
-      String hllOriginColumn) {
-    int distinctValueCount = columnIndexCreationInfo.getDistinctValueCount();
+      FieldSpec fieldSpec, boolean hasDictionary, Integer dictionaryElementSize, boolean hasInvertedIndex,
+      String hllOriginColumn, Integer distinctValueCount) {
     properties.setProperty(getKeyFor(column, CARDINALITY), String.valueOf(distinctValueCount));
     properties.setProperty(getKeyFor(column, TOTAL_DOCS), String.valueOf(totalDocs));
     properties.setProperty(getKeyFor(column, TOTAL_RAW_DOCS), String.valueOf(totalRawDocs));
     properties.setProperty(getKeyFor(column, TOTAL_AGG_DOCS), String.valueOf(totalAggDocs));
     properties.setProperty(getKeyFor(column, DATA_TYPE), String.valueOf(fieldSpec.getDataType()));
-    properties.setProperty(getKeyFor(column, BITS_PER_ELEMENT),
-        String.valueOf(SingleValueUnsortedForwardIndexCreator.getNumOfBits(distinctValueCount)));
+    properties.setProperty(getKeyFor(column, BITS_PER_ELEMENT), String.valueOf(SingleValueUnsortedForwardIndexCreator.getNumOfBits(distinctValueCount)));
     properties.setProperty(getKeyFor(column, DICTIONARY_ELEMENT_SIZE), String.valueOf(dictionaryElementSize));
     properties.setProperty(getKeyFor(column, COLUMN_TYPE), String.valueOf(fieldSpec.getFieldType()));
     properties.setProperty(getKeyFor(column, IS_SORTED), String.valueOf(columnIndexCreationInfo.isSorted()));
@@ -494,29 +551,42 @@ public class SegmentColumnarIndexCreator implements SegmentCreator {
    * @param column Column name
    * @param totalDocs Total number of documents to index
    * @param lengthOfLongestEntry Length of longest entry
+   * @param mutableSegment
    * @return
    * @throws IOException
    */
   public static SingleValueRawIndexCreator getRawIndexCreatorForColumn(File file,
       ChunkCompressorFactory.CompressionType compressionType, String column, FieldSpec.DataType dataType, int totalDocs,
-      int lengthOfLongestEntry) throws IOException {
+      int lengthOfLongestEntry, MutableSegmentImpl mutableSegment) throws IOException {
+
+    SingleColumnSingleValueReader rawIndexReader = null;
+    if (mutableSegment != null) {
+      ColumnDataSource dataSource = mutableSegment.getDataSource(column);
+      if (!dataSource.getDataSourceMetadata().hasDictionary()) {
+        rawIndexReader = (SingleColumnSingleValueReader)dataSource.getForwardIndex();
+      }
+    }
 
     SingleValueRawIndexCreator indexCreator;
     switch (dataType) {
       case INT:
-        indexCreator = new SingleValueFixedByteRawIndexCreator(file, compressionType, column, totalDocs, Integer.BYTES);
+        indexCreator = new SingleValueFixedByteRawIndexCreator(file, compressionType, column, totalDocs, Integer.BYTES,
+            dataType, rawIndexReader);
         break;
 
       case LONG:
-        indexCreator = new SingleValueFixedByteRawIndexCreator(file, compressionType, column, totalDocs, Long.BYTES);
+        indexCreator = new SingleValueFixedByteRawIndexCreator(file, compressionType, column, totalDocs, Long.BYTES,
+            dataType, rawIndexReader);
         break;
 
       case FLOAT:
-        indexCreator = new SingleValueFixedByteRawIndexCreator(file, compressionType, column, totalDocs, Float.BYTES);
+        indexCreator = new SingleValueFixedByteRawIndexCreator(file, compressionType, column, totalDocs, Float.BYTES,
+            dataType, rawIndexReader);
         break;
 
       case DOUBLE:
-        indexCreator = new SingleValueFixedByteRawIndexCreator(file, compressionType, column, totalDocs, Double.BYTES);
+        indexCreator = new SingleValueFixedByteRawIndexCreator(file, compressionType, column, totalDocs, Double.BYTES,
+            dataType, rawIndexReader);
         break;
 
       case STRING:

@@ -305,7 +305,7 @@ public class DictionaryToRawIndexConverter {
         ChunkCompressorFactory.CompressionType.valueOf(_compressionType);
     SingleValueRawIndexCreator rawIndexCreator =
         SegmentColumnarIndexCreator.getRawIndexCreatorForColumn(newSegment, compressionType, column, dataType,
-            totalDocs, lengthOfLongestEntry);
+            totalDocs, lengthOfLongestEntry, null);
 
     int docId = 0;
     bvIter.reset();

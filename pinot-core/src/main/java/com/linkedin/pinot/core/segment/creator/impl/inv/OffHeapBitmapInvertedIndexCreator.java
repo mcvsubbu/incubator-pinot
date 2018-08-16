@@ -239,4 +239,24 @@ public final class OffHeapBitmapInvertedIndexCreator implements InvertedIndexCre
       }
     }
   }
+
+  /*
+  public void build(SegmentDictionaryCreator dictionaryCreator, int[] newToOldDocIds) {
+    ColumnDataSource dataSource = _mutableSegment.getDataSource(columnName);
+    InvertedIndexReader invertedIndexReader = dataSource.getInvertedIndex();
+
+    for (int newDocId = 0; newDocId < _numDocs; newDocId++) {
+      int oldDocId = newToOldDocIds[newDocId];
+
+    }
+
+    int[] sortedDictIds = _dictionaryCreator.getSortedDictIds();
+    int cardinality = sortedDictIds.length;
+
+    for (int oldDictId = 0; oldDictId < cardinality; oldDictId++) {
+      RealtimeInvertedIndexReader indexReader = (RealtimeInvertedIndexReader)invertedIndexReader.getDocIds(oldDictId);
+      MutableRoaringBitmap bitMap = indexReader.getDocIds()
+    }
+  }
+  */
 }

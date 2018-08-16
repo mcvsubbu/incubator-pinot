@@ -42,7 +42,7 @@ public interface Dictionary extends Closeable {
 
   String getStringValue(int dictId);
 
-  byte[] getBytesValue(int dictId);
+  byte[] getSerializedValue(int dictId);
 
   int length();
 

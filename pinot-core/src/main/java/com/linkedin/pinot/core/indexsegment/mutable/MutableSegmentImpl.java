@@ -604,6 +604,14 @@ public class MutableSegmentImpl implements MutableSegment {
     return docIds;
   }
 
+  public FixedByteSingleColumnMultiValueReaderWriter getMVFwdIndex(String column) {
+    return (FixedByteSingleColumnMultiValueReaderWriter)_indexReaderWriterMap.get(column);
+  }
+
+  public FixedByteSingleColumnSingleValueReaderWriter getSVFwdIndex(String column) {
+    return (FixedByteSingleColumnSingleValueReaderWriter)_indexReaderWriterMap.get(column);
+  }
+
   /**
    * Helper method that builds allocation context that includes segment name, column name, and index type.
    *

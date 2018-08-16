@@ -16,12 +16,16 @@
 package com.linkedin.pinot.core.segment.creator.impl.fwd;
 
 import com.linkedin.pinot.common.data.FieldSpec;
+import com.linkedin.pinot.core.io.readerwriter.impl.FixedByteSingleColumnMultiValueReaderWriter;
 import com.linkedin.pinot.core.io.writer.SingleColumnMultiValueWriter;
 import com.linkedin.pinot.core.io.writer.impl.v1.FixedBitMultiValueWriter;
+import com.linkedin.pinot.core.segment.creator.InvertedIndexCreator;
 import com.linkedin.pinot.core.segment.creator.MultiValueForwardIndexCreator;
+import com.linkedin.pinot.core.segment.creator.impl.SegmentDictionaryCreator;
 import com.linkedin.pinot.core.segment.creator.impl.V1Constants;
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import org.apache.commons.io.FileUtils;
 
 
@@ -30,15 +34,24 @@ public class MultiValueUnsortedForwardIndexCreator implements MultiValueForwardI
   private final FieldSpec spec;
   private int maxNumberOfBits = 0;
   private SingleColumnMultiValueWriter mVWriter;
+  int _totalDocs;
+  SegmentDictionaryCreator _dictionaryCreator;
+  int[] _newToOldDocIds;
+  FixedByteSingleColumnMultiValueReaderWriter _fwdIndex;
 
   public MultiValueUnsortedForwardIndexCreator(FieldSpec spec, File baseIndexDir, int cardinality, int numDocs,
-      int totalNumberOfValues, boolean hasNulls) throws Exception {
+      int totalNumberOfValues, boolean hasNulls, SegmentDictionaryCreator dictionaryCreator,
+      FixedByteSingleColumnMultiValueReaderWriter fwdIndex, int[] newToOldDocIds) throws Exception {
     forwardIndexFile =
         new File(baseIndexDir, spec.getName() + V1Constants.Indexes.UNSORTED_MV_FORWARD_INDEX_FILE_EXTENSION);
     this.spec = spec;
     FileUtils.touch(forwardIndexFile);
     maxNumberOfBits = SingleValueUnsortedForwardIndexCreator.getNumOfBits(cardinality);
     mVWriter = new FixedBitMultiValueWriter(forwardIndexFile, numDocs, totalNumberOfValues, maxNumberOfBits);
+    _fwdIndex = fwdIndex;
+    _newToOldDocIds = newToOldDocIds;
+    _dictionaryCreator = dictionaryCreator;
+    _totalDocs = numDocs;
   }
 
   @Override
@@ -49,5 +62,22 @@ public class MultiValueUnsortedForwardIndexCreator implements MultiValueForwardI
   @Override
   public void close() throws IOException {
     mVWriter.close();
+  }
+
+  @Override
+  public void build(InvertedIndexCreator invertedIndexCreator) {
+    int[] sortedDictIds = _dictionaryCreator.getSortedDictIds();
+    int[] dictIds = new int[sortedDictIds.length]; // max number of mvs
+
+    for (int i = 0; i < _totalDocs; i++) {
+      int numDictIds = _fwdIndex.getIntArray(_newToOldDocIds[i], dictIds);
+      for (int v = 0; v < numDictIds; v++) {
+        dictIds[v] = sortedDictIds[dictIds[v]];
+      }
+      index(i, Arrays.copyOf(dictIds, numDictIds));
+      if (invertedIndexCreator != null) {
+        invertedIndexCreator.add(dictIds, numDictIds);
+      }
+    }
   }
 }

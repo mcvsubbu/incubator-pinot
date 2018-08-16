@@ -380,7 +380,8 @@ public class DictionariesTest {
         new String(new byte[]{67, -61, -76, 116, 101, 32, 100, 39, 73, 118, 111, 105, 114, 101}); // "Côte d'Ivoire";
     Arrays.sort(inputStrings);
 
-    try (SegmentDictionaryCreator dictionaryCreator = new SegmentDictionaryCreator(inputStrings, fieldSpec, indexDir)) {
+    try (SegmentDictionaryCreator dictionaryCreator = new SegmentDictionaryCreator(inputStrings, fieldSpec, indexDir,
+        null, null)) {
       dictionaryCreator.build();
       for (String inputString : inputStrings) {
         Assert.assertTrue(dictionaryCreator.indexOfSV(inputString) >= 0,
@@ -401,7 +402,7 @@ public class DictionariesTest {
     FieldSpec fieldSpec = new DimensionFieldSpec("test", DataType.STRING, true);
 
     try (SegmentDictionaryCreator dictionaryCreator = new SegmentDictionaryCreator(new String[]{""}, fieldSpec,
-        indexDir)) {
+        indexDir, null, null)) {
       dictionaryCreator.build();
       Assert.assertEquals(dictionaryCreator.getNumBytesPerEntry(), 0);
       Assert.assertEquals(dictionaryCreator.indexOfSV(""), 0);

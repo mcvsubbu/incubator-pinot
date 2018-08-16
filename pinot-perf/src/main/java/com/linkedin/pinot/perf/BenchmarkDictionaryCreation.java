@@ -32,7 +32,6 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.runner.Runner;
-import org.openjdk.jmh.runner.options.ChainedOptionsBuilder;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 import org.openjdk.jmh.runner.options.TimeValue;
@@ -71,7 +70,8 @@ public class BenchmarkDictionaryCreation {
   @BenchmarkMode(Mode.SampleTime)
   @OutputTimeUnit(TimeUnit.MILLISECONDS)
   public int benchmarkIntDictionaryCreation() throws IOException {
-    try (SegmentDictionaryCreator dictionaryCreator = new SegmentDictionaryCreator(_sortedInts, INT_FIELD, INDEX_DIR)) {
+    try (SegmentDictionaryCreator dictionaryCreator = new SegmentDictionaryCreator(_sortedInts, INT_FIELD, INDEX_DIR,
+        null, null)) {
       dictionaryCreator.build();
       return dictionaryCreator.indexOfSV(0);
     }
@@ -82,7 +82,7 @@ public class BenchmarkDictionaryCreation {
   @OutputTimeUnit(TimeUnit.MILLISECONDS)
   public int benchmarkLongDictionaryCreation() throws IOException {
     try (SegmentDictionaryCreator dictionaryCreator = new SegmentDictionaryCreator(_sortedLongs, LONG_FIELD,
-        INDEX_DIR)) {
+        INDEX_DIR, null, null)) {
       dictionaryCreator.build();
       return dictionaryCreator.indexOfSV(0L);
     }
@@ -93,7 +93,7 @@ public class BenchmarkDictionaryCreation {
   @OutputTimeUnit(TimeUnit.MILLISECONDS)
   public int benchmarkFloatDictionaryCreation() throws IOException {
     try (SegmentDictionaryCreator dictionaryCreator = new SegmentDictionaryCreator(_sortedFloats, FLOAT_FIELD,
-        INDEX_DIR)) {
+        INDEX_DIR, null, null)) {
       dictionaryCreator.build();
       return dictionaryCreator.indexOfSV(0f);
     }
@@ -104,7 +104,7 @@ public class BenchmarkDictionaryCreation {
   @OutputTimeUnit(TimeUnit.MILLISECONDS)
   public int benchmarkDoubleDictionaryCreation() throws IOException {
     try (SegmentDictionaryCreator dictionaryCreator = new SegmentDictionaryCreator(_sortedDoubles, DOUBLE_FIELD,
-        INDEX_DIR)) {
+        INDEX_DIR, null, null)) {
       dictionaryCreator.build();
       return dictionaryCreator.indexOfSV(0d);
     }
@@ -115,7 +115,7 @@ public class BenchmarkDictionaryCreation {
   @OutputTimeUnit(TimeUnit.MILLISECONDS)
   public int benchmarkStringDictionaryCreation() throws IOException {
     try (SegmentDictionaryCreator dictionaryCreator = new SegmentDictionaryCreator(_sortedStrings, STRING_FIELD,
-        INDEX_DIR)) {
+        INDEX_DIR, null, null)) {
       dictionaryCreator.build();
       return dictionaryCreator.indexOfSV("0");
     }

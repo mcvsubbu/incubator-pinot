@@ -19,6 +19,7 @@ import com.linkedin.pinot.common.utils.primitive.ByteArray;
 import com.linkedin.pinot.core.io.compression.ChunkCompressorFactory;
 import com.linkedin.pinot.core.io.writer.impl.v1.VarByteChunkSingleValueWriter;
 import com.linkedin.pinot.core.segment.creator.BaseSingleValueRawIndexCreator;
+import com.linkedin.pinot.core.segment.creator.InvertedIndexCreator;
 import com.linkedin.pinot.core.segment.creator.impl.V1Constants;
 import java.io.File;
 import java.io.IOException;
@@ -56,5 +57,10 @@ public class SingleValueVarByteRawIndexCreator extends BaseSingleValueRawIndexCr
   public void close()
       throws IOException {
     _indexWriter.close();
+  }
+
+  @Override
+  public void build(InvertedIndexCreator invertedIndexCreator) {
+    throw new UnsupportedOperationException();
   }
 }

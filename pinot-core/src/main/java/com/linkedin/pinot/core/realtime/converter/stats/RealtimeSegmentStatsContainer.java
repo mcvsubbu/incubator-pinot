@@ -32,11 +32,13 @@ public class RealtimeSegmentStatsContainer implements SegmentPreIndexStatsContai
   private final MutableSegmentImpl _realtimeSegment;
   private final RealtimeSegmentRecordReader _realtimeSegmentRecordReader;
   private final Map<String, ColumnStatistics> _columnStatisticsMap = new HashMap<>();
+  private final int[] _sortedDocIdIterator;
 
   public RealtimeSegmentStatsContainer(MutableSegmentImpl realtimeSegment,
       RealtimeSegmentRecordReader realtimeSegmentRecordReader) {
     _realtimeSegment = realtimeSegment;
     _realtimeSegmentRecordReader = realtimeSegmentRecordReader;
+    _sortedDocIdIterator = realtimeSegmentRecordReader.getSortedDocIdIterationOrder();
 
     SegmentPartitionConfig segmentPartitionConfig = _realtimeSegment.getSegmentPartitionConfig();
 
@@ -45,7 +47,7 @@ public class RealtimeSegmentStatsContainer implements SegmentPreIndexStatsContai
       ColumnDataSource dataSource = realtimeSegment.getDataSource(columnName);
       if (dataSource.getDataSourceMetadata().hasDictionary()) {
         _columnStatisticsMap.put(columnName, new RealtimeColumnStatistics(realtimeSegment.getDataSource(columnName),
-            _realtimeSegmentRecordReader.getSortedDocIdIterationOrder(),
+            _sortedDocIdIterator,
             (segmentPartitionConfig == null) ? null : segmentPartitionConfig.getColumnPartitionMap().get(columnName)));
       } else {
         _columnStatisticsMap.put(columnName, new RealtimeNoDictionaryColStatistics(dataSource));
@@ -56,6 +58,10 @@ public class RealtimeSegmentStatsContainer implements SegmentPreIndexStatsContai
   @Override
   public ColumnStatistics getColumnProfileFor(String column) throws Exception {
     return _columnStatisticsMap.get(column);
+  }
+
+  public int[] getSortedDocIdIterator() {
+    return _sortedDocIdIterator;
   }
 
   @Override
