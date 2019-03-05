@@ -61,15 +61,7 @@ public class ControllerConf extends PropertiesConfiguration {
   public enum ControllerMode {
     DUAL,
     PINOT_ONLY,
-    HELIX_ONLY;
-
-    public static ControllerMode getMode(String mode) {
-      if (mode == null) {
-        LOGGER.info("No controller mode specified. Using dual mode by default.");
-        return ControllerMode.DUAL;
-      }
-      return ControllerMode.valueOf(mode.toUpperCase());
-    }
+    HELIX_ONLY
   }
 
   public static class ControllerPeriodicTasksConf {
@@ -154,7 +146,7 @@ public class ControllerConf extends PropertiesConfiguration {
   private static final int DEFAULT_REALTIME_SEGMENT_METADATA_COMMIT_NUMLOCKS = 64;
   private static final boolean DEFAULT_ENABLE_STORAGE_QUOTA_CHECK = true;
   private static final boolean DEFAULT_ENABLE_BATCH_MESSAGE_MODE = true;
-  private static final ControllerMode DEFAULT_CONTROLLER_MODE = ControllerMode.DUAL;
+  private static final String DEFAULT_CONTROLLER_MODE = ControllerMode.DUAL.name();
 
   private static final String DEFAULT_PINOT_FS_FACTORY_CLASS_LOCAL = LocalPinotFS.class.getName();
 
@@ -604,6 +596,6 @@ public class ControllerConf extends PropertiesConfiguration {
   }
 
   public ControllerMode getControllerMode() {
-    return ControllerMode.getMode(getString(CONTROLLER_MODE, DEFAULT_CONTROLLER_MODE.name()));
+    return ControllerMode.valueOf(getString(CONTROLLER_MODE, DEFAULT_CONTROLLER_MODE).toUpperCase());
   }
 }
