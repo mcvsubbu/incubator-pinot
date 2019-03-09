@@ -94,3 +94,10 @@ show up in Pinot.
 To show new events appearing, one can run :sql:`SELECT * FROM meetupRsvp ORDER BY mtime DESC LIMIT 50` repeatedly, which shows the
 last events that were ingested by Pinot.
 
+Experiment with Pinot
+~~~~~~~~~~~~~~~~~~~~~
+
+Here's the instruction on how to add a simple table to the pinot system you got working int the previous demo steps,
+how to add segments, and how to query it.
+
+
