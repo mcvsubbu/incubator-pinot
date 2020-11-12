@@ -24,6 +24,7 @@ import org.apache.pinot.core.common.BlockDocIdSet;
 import org.apache.pinot.core.common.BlockDocIdValueSet;
 import org.apache.pinot.core.common.BlockMetadata;
 import org.apache.pinot.core.common.BlockValSet;
+import org.apache.pinot.core.query.request.context.ThreadTimer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,9 +39,12 @@ public class InstanceResponseBlock implements Block {
 
   private DataTable _instanceResponseDataTable;
 
-  public InstanceResponseBlock(IntermediateResultsBlock intermediateResultsBlock) {
+  public InstanceResponseBlock(IntermediateResultsBlock intermediateResultsBlock, ThreadTimer mainThreadTimer) {
     try {
       _instanceResponseDataTable = intermediateResultsBlock.getDataTable();
+      mainThreadTimer.stop();
+      long totalThreadTime = intermediateResultsBlock.getThreadTime() + mainThreadTimer.getThreadTime();
+      _instanceResponseDataTable.getMetadata().put(DataTable.THREAD_TIME_MS, String.valueOf(totalThreadTime));
     } catch (Exception e) {
       LOGGER.error("Caught exception while building data table.", e);
       throw new RuntimeException("Caught exception while building data table.", e);

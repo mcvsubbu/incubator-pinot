@@ -28,6 +28,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.Phaser;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
@@ -45,6 +46,7 @@ import org.apache.pinot.core.query.aggregation.groupby.AggregationGroupByResult;
 import org.apache.pinot.core.query.aggregation.groupby.GroupKeyGenerator;
 import org.apache.pinot.core.query.exception.EarlyTerminationException;
 import org.apache.pinot.core.query.request.context.QueryContext;
+import org.apache.pinot.core.query.request.context.ThreadTimer;
 import org.apache.pinot.core.util.GroupByUtils;
 import org.apache.pinot.core.util.trace.TraceRunnable;
 import org.apache.pinot.spi.utils.BytesUtils;
@@ -118,12 +120,15 @@ public class GroupByOrderByCombineOperator extends BaseOperator<IntermediateResu
     Phaser phaser = new Phaser(1);
 
     Future[] futures = new Future[numOperators];
+    AtomicLong totalWorkerTime = new AtomicLong(0);
     for (int i = 0; i < numOperators; i++) {
       int index = i;
       futures[i] = _executorService.submit(new TraceRunnable() {
         @SuppressWarnings("unchecked")
         @Override
         public void runJob() {
+          ThreadTimer threadTimer = new ThreadTimer();
+          threadTimer.start();
           try {
             // Register the thread to the phaser.
             // If the phaser is terminated (returning negative value) when trying to register the thread, that means the
@@ -214,11 +219,14 @@ public class GroupByOrderByCombineOperator extends BaseOperator<IntermediateResu
           } finally {
             operatorLatch.countDown();
             phaser.arriveAndDeregister();
+            threadTimer.stop();
+            totalWorkerTime.addAndGet(threadTimer.getThreadTime());
           }
         }
       });
     }
 
+    IntermediateResultsBlock mergedBlock = null;
     try {
       long timeoutMs = _endTimeMs - System.currentTimeMillis();
       boolean opCompleted = operatorLatch.await(timeoutMs, TimeUnit.MILLISECONDS);
@@ -232,7 +240,7 @@ public class GroupByOrderByCombineOperator extends BaseOperator<IntermediateResu
       }
 
       _indexedTable.finish(false);
-      IntermediateResultsBlock mergedBlock = new IntermediateResultsBlock(_indexedTable);
+      mergedBlock = new IntermediateResultsBlock(_indexedTable);
 
       // Set the processing exceptions.
       if (!mergedProcessingExceptions.isEmpty()) {
@@ -258,6 +266,7 @@ public class GroupByOrderByCombineOperator extends BaseOperator<IntermediateResu
       }
       // Deregister the main thread and wait for all threads done
       phaser.awaitAdvance(phaser.arriveAndDeregister());
+      mergedBlock.setThreadTime(totalWorkerTime.get());
     }
   }
 

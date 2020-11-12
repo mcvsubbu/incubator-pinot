@@ -31,6 +31,7 @@ import java.util.concurrent.Phaser;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.pinot.common.exception.QueryException;
 import org.apache.pinot.common.utils.DataSchema;
@@ -42,6 +43,7 @@ import org.apache.pinot.core.query.exception.EarlyTerminationException;
 import org.apache.pinot.core.query.request.context.ExpressionContext;
 import org.apache.pinot.core.query.request.context.OrderByExpressionContext;
 import org.apache.pinot.core.query.request.context.QueryContext;
+import org.apache.pinot.core.query.request.context.ThreadTimer;
 import org.apache.pinot.core.query.selection.SelectionOperatorUtils;
 import org.apache.pinot.core.util.trace.TraceRunnable;
 
@@ -153,11 +155,14 @@ public class SelectionOrderByCombineOperator extends BaseCombineOperator {
     Phaser phaser = new Phaser(1);
 
     Future[] futures = new Future[numThreads];
+    AtomicLong totalWorkerTime = new AtomicLong(0);
     for (int i = 0; i < numThreads; i++) {
       int threadIndex = i;
       futures[i] = _executorService.submit(new TraceRunnable() {
         @Override
         public void runJob() {
+          ThreadTimer workerTimer = new ThreadTimer();
+          workerTimer.start();
           try {
             // Register the thread to the phaser
             // NOTE: If the phaser is terminated (returning negative value) when trying to register the thread, that
@@ -257,6 +262,8 @@ public class SelectionOrderByCombineOperator extends BaseCombineOperator {
             }
           } finally {
             phaser.arriveAndDeregister();
+            workerTimer.stop();
+            totalWorkerTime.addAndGet(workerTimer.getThreadTime());
           }
         }
       });
@@ -310,6 +317,7 @@ public class SelectionOrderByCombineOperator extends BaseCombineOperator {
       }
       // Deregister the main thread and wait for all threads done
       phaser.awaitAdvance(phaser.arriveAndDeregister());
+      mergedBlock.setThreadTime(totalWorkerTime.get());
     }
 
     CombineOperatorUtils.setExecutionStatistics(mergedBlock, _operators);
