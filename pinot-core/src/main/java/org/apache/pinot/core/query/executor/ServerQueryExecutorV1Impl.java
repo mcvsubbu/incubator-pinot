@@ -259,6 +259,7 @@ public class ServerQueryExecutorV1Impl implements QueryExecutor {
       ExecutorService executorService, @Nullable StreamObserver<Server.ServerResponse> responseObserver, long endTimeMs,
       boolean enableStreaming)
       throws Exception {
+    // TODO Measure the time of threads in handleSuQuery() and return it, since it calls processQuery() recursively
     handleSubquery(queryContext, indexSegments, timerContext, executorService, endTimeMs);
 
     // Compute total docs for the table before pruning the segments
@@ -282,6 +283,7 @@ public class ServerQueryExecutorV1Impl implements QueryExecutor {
       metadata.put(DataTable.NUM_ENTRIES_SCANNED_POST_FILTER_METADATA_KEY, "0");
       metadata.put(DataTable.NUM_SEGMENTS_PROCESSED, "0");
       metadata.put(DataTable.NUM_SEGMENTS_MATCHED, "0");
+      metadata.put(DataTable.THREAD_TIME_MS, "0");
       return dataTable;
     } else {
       TimerContext.Timer planBuildTimer = timerContext.startNewPhaseTimer(ServerQueryPhase.BUILD_QUERY_PLAN);

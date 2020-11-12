@@ -183,6 +183,7 @@ public abstract class QueryScheduler {
         Long.parseLong(dataTableMetadata.getOrDefault(DataTable.NUM_CONSUMING_SEGMENTS_PROCESSED, INVALID_SEGMENTS_COUNT));
     long minConsumingFreshnessMs =
         Long.parseLong(dataTableMetadata.getOrDefault(DataTable.MIN_CONSUMING_FRESHNESS_TIME_MS, INVALID_FRESHNESS_MS));
+    long threadTimeMs = Long.parseLong(dataTableMetadata.getOrDefault(DataTable.THREAD_TIME_MS, "0"));
 
     if (numDocsScanned > 0) {
       serverMetrics.addMeteredTableValue(tableNameWithType, ServerMeter.NUM_DOCS_SCANNED, numDocsScanned);
@@ -205,13 +206,14 @@ public abstract class QueryScheduler {
     if (queryLogRateLimiter.tryAcquire() || forceLog(schedulerWaitMs, numDocsScanned)) {
       LOGGER.info("Processed requestId={},table={},segments(queried/processed/matched/consuming)={}/{}/{}/{},"
               + "schedulerWaitMs={},reqDeserMs={},totalExecMs={},resSerMs={},totalTimeMs={},minConsumingFreshnessMs={},broker={},"
-              + "numDocsScanned={},scanInFilter={},scanPostFilter={},sched={}", requestId, tableNameWithType,
+              + "numDocsScanned={},scanInFilter={},scanPostFilter={},sched={},threadTimeMs={}", requestId, tableNameWithType,
           numSegmentsQueried, numSegmentsProcessed, numSegmentsMatched, numSegmentsConsuming, schedulerWaitMs,
           timerContext.getPhaseDurationMs(ServerQueryPhase.REQUEST_DESERIALIZATION),
           timerContext.getPhaseDurationMs(ServerQueryPhase.QUERY_PROCESSING),
           timerContext.getPhaseDurationMs(ServerQueryPhase.RESPONSE_SERIALIZATION),
           timerContext.getPhaseDurationMs(ServerQueryPhase.TOTAL_QUERY_TIME), minConsumingFreshnessMs,
-          queryRequest.getBrokerId(), numDocsScanned, numEntriesScannedInFilter, numEntriesScannedPostFilter, name());
+          queryRequest.getBrokerId(), numDocsScanned, numEntriesScannedInFilter, numEntriesScannedPostFilter, name(),
+          threadTimeMs);
 
       // Limit the dropping log message at most once per second.
       if (numDroppedLogRateLimiter.tryAcquire()) {
