@@ -31,6 +31,7 @@ import java.util.concurrent.Phaser;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.pinot.common.exception.QueryException;
 import org.apache.pinot.common.response.ProcessingException;
 import org.apache.pinot.core.common.Operator;
@@ -42,6 +43,7 @@ import org.apache.pinot.core.query.aggregation.groupby.AggregationGroupByTrimmin
 import org.apache.pinot.core.query.aggregation.groupby.GroupKeyGenerator;
 import org.apache.pinot.core.query.exception.EarlyTerminationException;
 import org.apache.pinot.core.query.request.context.QueryContext;
+import org.apache.pinot.core.query.request.context.ThreadTimer;
 import org.apache.pinot.core.util.trace.TraceRunnable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -123,6 +125,8 @@ public class GroupByCombineOperator extends BaseOperator<IntermediateResultsBloc
     CountDownLatch operatorLatch = new CountDownLatch(numOperators);
     Phaser phaser = new Phaser(1);
 
+    AtomicLong totalWorkerTime = new AtomicLong(0);
+
     Future[] futures = new Future[numOperators];
     for (int i = 0; i < numOperators; i++) {
       int index = i;
@@ -130,6 +134,8 @@ public class GroupByCombineOperator extends BaseOperator<IntermediateResultsBloc
         @SuppressWarnings("unchecked")
         @Override
         public void runJob() {
+          ThreadTimer workerTimer = new ThreadTimer();
+          workerTimer.start();
           try {
             // Register the thread to the phaser.
             // If the phaser is terminated (returning negative value) when trying to register the thread, that means the
@@ -183,11 +189,14 @@ public class GroupByCombineOperator extends BaseOperator<IntermediateResultsBloc
           } finally {
             operatorLatch.countDown();
             phaser.arriveAndDeregister();
+            workerTimer.stop();
+            totalWorkerTime.addAndGet(workerTimer.getThreadTime());
           }
         }
       });
     }
 
+    IntermediateResultsBlock mergedBlock = null;
     try {
       boolean opCompleted = operatorLatch.await(_timeOutMs, TimeUnit.MILLISECONDS);
       if (!opCompleted) {
@@ -204,7 +213,7 @@ public class GroupByCombineOperator extends BaseOperator<IntermediateResultsBloc
           new AggregationGroupByTrimmingService(_queryContext);
       List<Map<String, Object>> trimmedResults =
           aggregationGroupByTrimmingService.trimIntermediateResultsMap(resultsMap);
-      IntermediateResultsBlock mergedBlock = new IntermediateResultsBlock(aggregationFunctions, trimmedResults, true);
+      mergedBlock = new IntermediateResultsBlock(aggregationFunctions, trimmedResults, true);
 
       // Set the processing exceptions.
       if (!mergedProcessingExceptions.isEmpty()) {
@@ -232,6 +241,9 @@ public class GroupByCombineOperator extends BaseOperator<IntermediateResultsBloc
       }
       // Deregister the main thread and wait for all threads done
       phaser.awaitAdvance(phaser.arriveAndDeregister());
+      if (mergedBlock != null) {
+        mergedBlock.setThreadTime(totalWorkerTime.get());
+      }
     }
   }
 

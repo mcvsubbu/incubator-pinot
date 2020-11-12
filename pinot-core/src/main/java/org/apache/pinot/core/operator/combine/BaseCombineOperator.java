@@ -32,6 +32,7 @@ import org.apache.pinot.core.operator.BaseOperator;
 import org.apache.pinot.core.operator.blocks.IntermediateResultsBlock;
 import org.apache.pinot.core.query.exception.EarlyTerminationException;
 import org.apache.pinot.core.query.request.context.QueryContext;
+import org.apache.pinot.core.query.request.context.ThreadTimer;
 import org.apache.pinot.core.util.trace.TraceRunnable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,6 +82,9 @@ public abstract class BaseCombineOperator extends BaseOperator<IntermediateResul
       futures[i] = _executorService.submit(new TraceRunnable() {
         @Override
         public void runJob() {
+          ThreadTimer threadTimer = new ThreadTimer();
+          threadTimer.start();
+          IntermediateResultsBlock resultsBlock = null;
           try {
             // Register the thread to the phaser
             // NOTE: If the phaser is terminated (returning negative value) when trying to register the thread, that
@@ -92,7 +96,7 @@ public abstract class BaseCombineOperator extends BaseOperator<IntermediateResul
 
             for (int operatorIndex = threadIndex; operatorIndex < numOperators; operatorIndex += numThreads) {
               try {
-                IntermediateResultsBlock resultsBlock =
+                resultsBlock =
                     (IntermediateResultsBlock) _operators.get(operatorIndex).nextBlock();
                 if (isQuerySatisfied(resultsBlock)) {
                   // Query is satisfied, skip processing the remaining segments
@@ -114,12 +118,18 @@ public abstract class BaseCombineOperator extends BaseOperator<IntermediateResul
             }
           } finally {
             phaser.arriveAndDeregister();
+            threadTimer.stop();
+            long threadTime = threadTimer.getThreadTime();
+            if (resultsBlock != null) {
+              resultsBlock.setThreadTime(threadTime);
+            }
           }
         }
       });
     }
 
     IntermediateResultsBlock mergedBlock = null;
+    long workerThreadTime = 0;
     try {
       int numBlocksMerged = 0;
       while (numBlocksMerged < numOperators) {
@@ -133,6 +143,7 @@ public abstract class BaseCombineOperator extends BaseOperator<IntermediateResul
               new TimeoutException("Timed out while polling results block")));
           break;
         }
+        workerThreadTime += blockToMerge.getThreadTime();
         if (blockToMerge.getProcessingExceptions() != null) {
           // Caught exception while processing segment, skip merging the remaining results blocks and directly return
           // the exception
@@ -162,6 +173,9 @@ public abstract class BaseCombineOperator extends BaseOperator<IntermediateResul
       }
       // Deregister the main thread and wait for all threads done
       phaser.awaitAdvance(phaser.arriveAndDeregister());
+      if (mergedBlock != null) {
+        mergedBlock.setThreadTime(workerThreadTime);
+      }
     }
 
     CombineOperatorUtils.setExecutionStatistics(mergedBlock, _operators);

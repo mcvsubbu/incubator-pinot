@@ -21,6 +21,7 @@ package org.apache.pinot.core.operator;
 import org.apache.pinot.core.common.Operator;
 import org.apache.pinot.core.operator.blocks.InstanceResponseBlock;
 import org.apache.pinot.core.operator.blocks.IntermediateResultsBlock;
+import org.apache.pinot.core.query.request.context.ThreadTimer;
 
 
 public class InstanceResponseOperator extends BaseOperator<InstanceResponseBlock> {
@@ -34,7 +35,9 @@ public class InstanceResponseOperator extends BaseOperator<InstanceResponseBlock
 
   @Override
   protected InstanceResponseBlock getNextBlock() {
-    return new InstanceResponseBlock((IntermediateResultsBlock) _operator.nextBlock());
+    ThreadTimer mainThreadTimer = new ThreadTimer();
+    mainThreadTimer.start();
+    return new InstanceResponseBlock((IntermediateResultsBlock) _operator.nextBlock(), mainThreadTimer);
   }
 
   @Override

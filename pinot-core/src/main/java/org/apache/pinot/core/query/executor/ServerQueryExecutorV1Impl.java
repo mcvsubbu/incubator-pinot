@@ -207,6 +207,7 @@ public class ServerQueryExecutorV1Impl implements QueryExecutor {
         metadata.put(DataTable.NUM_ENTRIES_SCANNED_POST_FILTER_METADATA_KEY, "0");
         metadata.put(DataTable.NUM_SEGMENTS_PROCESSED, "0");
         metadata.put(DataTable.NUM_SEGMENTS_MATCHED, "0");
+        metadata.put(DataTable.THREAD_TIME_MS, "0");
       } else {
         TimerContext.Timer planBuildTimer = timerContext.startNewPhaseTimer(ServerQueryPhase.BUILD_QUERY_PLAN);
         List<IndexSegment> indexSegments = new ArrayList<>(numSegmentsMatchedAfterPruning);

@@ -64,6 +64,7 @@ public class IntermediateResultsBlock implements Block {
   private int _numSegmentsProcessed;
   private int _numSegmentsMatched;
   private boolean _numGroupsLimitReached;
+  private long _threadTime;
 
   private Table _table;
 
@@ -197,6 +198,14 @@ public class IntermediateResultsBlock implements Block {
 
   public void setNumEntriesScannedPostFilter(long numEntriesScannedPostFilter) {
     _numEntriesScannedPostFilter = numEntriesScannedPostFilter;
+  }
+
+  public void setThreadTime(long threadTime) {
+    _threadTime = threadTime;
+  }
+
+  public long getThreadTime() {
+    return _threadTime;
   }
 
   public void setNumSegmentsProcessed(int numSegmentsProcessed) {
