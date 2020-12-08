@@ -37,6 +37,7 @@ import org.apache.pinot.common.utils.DataTable;
 import org.apache.pinot.core.common.datatable.DataTableImplV2;
 import org.apache.pinot.core.query.executor.QueryExecutor;
 import org.apache.pinot.core.query.request.ServerQueryRequest;
+import org.apache.pinot.core.query.request.context.ThreadTimer;
 import org.apache.pinot.core.query.request.context.TimerContext;
 import org.apache.pinot.core.query.scheduler.resources.ResourceManager;
 import org.apache.pinot.spi.env.PinotConfiguration;
@@ -165,7 +166,10 @@ public abstract class QueryScheduler {
     Map<String, String> dataTableMetadata = dataTable.getMetadata();
     dataTableMetadata.put(DataTable.REQUEST_ID_METADATA_KEY, Long.toString(requestId));
 
+    ThreadTimer serializationTimer = new ThreadTimer();
+    serializationTimer.start();
     byte[] responseData = serializeDataTable(queryRequest, dataTable);
+    serializationTimer.stop();
 
     // Log the statistics
     String tableNameWithType = queryRequest.getTableNameWithType();
