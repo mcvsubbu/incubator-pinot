@@ -92,7 +92,7 @@ function waitForBrokerReady() {
 }
 
 function waitForServerReady() {
-  # TODO We are checjing for port 8097. Check for real server port from config if needed,
+  # TODO We are checking for port 8097. Check for real server port from config if needed,
   local status=1
   while [ $status -ne 0 ]; do
     sleep 1
